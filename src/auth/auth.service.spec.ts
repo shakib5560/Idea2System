@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { AUserService } from '../a_user/a_user.service';
 import { JwtService } from '@nestjs/jwt';
+import { MailService } from '../common/mail/mail.service';
+import { ConfigService } from '@nestjs/config';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -22,6 +24,11 @@ describe('AuthService', () => {
         AuthService,
         { provide: AUserService, useValue: mockUserService },
         { provide: JwtService, useValue: mockJwtService },
+        {
+          provide: MailService,
+          useValue: { sendEmailVerification: jest.fn() },
+        },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
       ],
     }).compile();
 

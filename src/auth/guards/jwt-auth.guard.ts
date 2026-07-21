@@ -1,7 +1,7 @@
-import { ExecutionContext, Injectable } from '@nestjs/common';
+import { ExecutionContext, Injectable, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
-import { Observable } from 'rxjs';
+import { firstValueFrom, Observable } from 'rxjs';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 @Injectable()
@@ -14,10 +14,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
    * Evaluates if the route should allow access.
    * Checks for @Public() metadata on both the handler (method) and controller (class) level.
    * If marked public, bypasses JWT authentication. Otherwise, runs JwtStrategy checks.
+   * Also verifies that the user's email is verified.
    */
-  canActivate(
-    context: ExecutionContext,
-  ): boolean | Promise<boolean> | Observable<boolean> {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -27,6 +26,28 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       return true;
     }
 
-    return super.canActivate(context);
+    const result = super.canActivate(context);
+    let canActivateParent = false;
+    
+    if (typeof result === 'boolean') {
+      canActivateParent = result;
+    } else if (result instanceof Observable) {
+      canActivateParent = await firstValueFrom(result);
+    } else {
+      canActivateParent = await result;
+    }
+
+    if (!canActivateParent) {
+      return false;
+    }
+
+    const request = context.switchToHttp().getRequest();
+    const user = request.user;
+
+    if (user && !user.emailVerified) {
+      throw new ForbiddenException('Please verify your email address to access this resource.');
+    }
+
+    return true;
   }
 }

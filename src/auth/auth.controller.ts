@@ -18,6 +18,7 @@ import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/create-auth.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { LoginDto } from './dto/login-auth.dto';
 import { OAuthStateService } from './oauth/oauth-state.service';
 import { OAuthProviderService } from './oauth/oauth-provider.service';
@@ -47,6 +48,20 @@ export class AuthController {
   }
 
   @Public()
+  @Get('verify-email')
+  verifyEmail(@Query('token') token: string) {
+    if (!token)
+      throw new BadRequestException('Verification token is required.');
+    return this.authService.verifyEmail(token);
+  }
+
+  @Public()
+  @Post('resend-verification')
+  resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.authService.resendEmailVerification(dto.email);
+  }
+
+  @Public()
   @UseGuards(AuthGuard('local'))
   @Post('login')
   login(
@@ -55,7 +70,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const tokenResult = this.authService.createToken(user);
-    
+
     // Set HTTP-only session cookie
     res.cookie('__session', tokenResult.accessToken, {
       httpOnly: true,
@@ -75,17 +90,22 @@ export class AuthController {
   googleLogin(@Res() res: Response) {
     const state = this.oauthStateService.generateState();
     const codeVerifier = this.oauthStateService.generateCodeVerifier();
-    const codeChallenge = this.oauthStateService.generateCodeChallenge(codeVerifier);
+    const codeChallenge =
+      this.oauthStateService.generateCodeChallenge(codeVerifier);
     const nonce = this.oauthStateService.generateNonce();
 
     // Store OAuth state & verifier in signed HTTP-only cookie
-    res.cookie('__oauth_state_google', JSON.stringify({ state, codeVerifier, nonce }), {
-      httpOnly: true,
-      signed: true,
-      sameSite: 'lax',
-      maxAge: 10 * 60 * 1000, // 10 minutes
-      secure: this.isProd,
-    });
+    res.cookie(
+      '__oauth_state_google',
+      JSON.stringify({ state, codeVerifier, nonce }),
+      {
+        httpOnly: true,
+        signed: true,
+        sameSite: 'lax',
+        maxAge: 10 * 60 * 1000, // 10 minutes
+        secure: this.isProd,
+      },
+    );
 
     const redirectUrl = this.oauthProviderService.getGoogleAuthUrl(
       state,
@@ -107,30 +127,41 @@ export class AuthController {
   ) {
     if (error) {
       res.clearCookie('__oauth_state_google');
-      throw new BadRequestException(`Google login cancelled or failed: ${error}`);
+      throw new BadRequestException(
+        `Google login cancelled or failed: ${error}`,
+      );
     }
 
     if (!code || !state) {
       res.clearCookie('__oauth_state_google');
-      throw new BadRequestException('Invalid callback request: missing code or state');
+      throw new BadRequestException(
+        'Invalid callback request: missing code or state',
+      );
     }
 
-    const rawCookie = req.signedCookies?.__oauth_state_google || req.cookies?.__oauth_state_google;
+    const rawCookie =
+      req.signedCookies?.__oauth_state_google ||
+      req.cookies?.__oauth_state_google;
     res.clearCookie('__oauth_state_google');
 
     if (!rawCookie) {
-      throw new BadRequestException('Invalid OAuth state session or session expired');
+      throw new BadRequestException(
+        'Invalid OAuth state session or session expired',
+      );
     }
 
     let cookieData: { state: string; codeVerifier: string; nonce: string };
     try {
-      cookieData = typeof rawCookie === 'string' ? JSON.parse(rawCookie) : rawCookie;
+      cookieData =
+        typeof rawCookie === 'string' ? JSON.parse(rawCookie) : rawCookie;
     } catch {
       throw new BadRequestException('Invalid OAuth state cookie content');
     }
 
     if (cookieData.state !== state) {
-      throw new UnauthorizedException('OAuth CSRF state mismatch verification failed');
+      throw new UnauthorizedException(
+        'OAuth CSRF state mismatch verification failed',
+      );
     }
 
     // Exchange code for tokens & validate ID Token PKCE / Nonce / Iss / Aud
@@ -141,7 +172,10 @@ export class AuthController {
     );
 
     // Find/create user & link OAuth account
-    const { user } = await this.oauthService.handleOAuthCallback('google', tokenResponse);
+    const { user } = await this.oauthService.handleOAuthCallback(
+      'google',
+      tokenResponse,
+    );
 
     // Generate App JWT & set HTTP-only session cookie
     const tokenResult = this.authService.createToken(user);
@@ -163,17 +197,25 @@ export class AuthController {
   githubLogin(@Res() res: Response) {
     const state = this.oauthStateService.generateState();
     const codeVerifier = this.oauthStateService.generateCodeVerifier();
-    const codeChallenge = this.oauthStateService.generateCodeChallenge(codeVerifier);
+    const codeChallenge =
+      this.oauthStateService.generateCodeChallenge(codeVerifier);
 
-    res.cookie('__oauth_state_github', JSON.stringify({ state, codeVerifier }), {
-      httpOnly: true,
-      signed: true,
-      sameSite: 'lax',
-      maxAge: 10 * 60 * 1000,
-      secure: this.isProd,
-    });
+    res.cookie(
+      '__oauth_state_github',
+      JSON.stringify({ state, codeVerifier }),
+      {
+        httpOnly: true,
+        signed: true,
+        sameSite: 'lax',
+        maxAge: 10 * 60 * 1000,
+        secure: this.isProd,
+      },
+    );
 
-    const redirectUrl = this.oauthProviderService.getGithubAuthUrl(state, codeChallenge);
+    const redirectUrl = this.oauthProviderService.getGithubAuthUrl(
+      state,
+      codeChallenge,
+    );
     return res.redirect(redirectUrl);
   }
 
@@ -188,30 +230,41 @@ export class AuthController {
   ) {
     if (error) {
       res.clearCookie('__oauth_state_github');
-      throw new BadRequestException(`GitHub login cancelled or failed: ${error}`);
+      throw new BadRequestException(
+        `GitHub login cancelled or failed: ${error}`,
+      );
     }
 
     if (!code || !state) {
       res.clearCookie('__oauth_state_github');
-      throw new BadRequestException('Invalid callback request: missing code or state');
+      throw new BadRequestException(
+        'Invalid callback request: missing code or state',
+      );
     }
 
-    const rawCookie = req.signedCookies?.__oauth_state_github || req.cookies?.__oauth_state_github;
+    const rawCookie =
+      req.signedCookies?.__oauth_state_github ||
+      req.cookies?.__oauth_state_github;
     res.clearCookie('__oauth_state_github');
 
     if (!rawCookie) {
-      throw new BadRequestException('Invalid OAuth state session or session expired');
+      throw new BadRequestException(
+        'Invalid OAuth state session or session expired',
+      );
     }
 
     let cookieData: { state: string; codeVerifier?: string };
     try {
-      cookieData = typeof rawCookie === 'string' ? JSON.parse(rawCookie) : rawCookie;
+      cookieData =
+        typeof rawCookie === 'string' ? JSON.parse(rawCookie) : rawCookie;
     } catch {
       throw new BadRequestException('Invalid OAuth state cookie content');
     }
 
     if (cookieData.state !== state) {
-      throw new UnauthorizedException('OAuth CSRF state mismatch verification failed');
+      throw new UnauthorizedException(
+        'OAuth CSRF state mismatch verification failed',
+      );
     }
 
     const tokenResponse = await this.oauthProviderService.exchangeGithubCode(
@@ -219,7 +272,10 @@ export class AuthController {
       cookieData.codeVerifier,
     );
 
-    const { user } = await this.oauthService.handleOAuthCallback('github', tokenResponse);
+    const { user } = await this.oauthService.handleOAuthCallback(
+      'github',
+      tokenResponse,
+    );
 
     const tokenResult = this.authService.createToken(user);
     res.cookie('__session', tokenResult.accessToken, {
@@ -242,18 +298,27 @@ export class AuthController {
     @Param('provider') provider: 'google' | 'github',
   ) {
     if (provider !== 'google' && provider !== 'github') {
-      throw new BadRequestException('Invalid provider name. Must be google or github.');
+      throw new BadRequestException(
+        'Invalid provider name. Must be google or github.',
+      );
     }
 
-    const userAccounts = await this.oauthService['oauthRepo'].findByUserId(user.id);
+    const userAccounts = await this.oauthService['oauthRepo'].findByUserId(
+      user.id,
+    );
     const targetAccount = userAccounts.find((acc) => acc.provider === provider);
 
     if (!targetAccount) {
-      throw new BadRequestException(`No connected ${provider} account found for this user`);
+      throw new BadRequestException(
+        `No connected ${provider} account found for this user`,
+      );
     }
 
     await this.oauthService.ensureValidProviderToken(targetAccount.id);
-    return { success: true, message: `Provider token for ${provider} refreshed successfully` };
+    return {
+      success: true,
+      message: `Provider token for ${provider} refreshed successfully`,
+    };
   }
 
   @ApiBearerAuth('access-token')
@@ -263,11 +328,16 @@ export class AuthController {
     @Param('provider') provider: 'google' | 'github',
   ) {
     if (provider !== 'google' && provider !== 'github') {
-      throw new BadRequestException('Invalid provider name. Must be google or github.');
+      throw new BadRequestException(
+        'Invalid provider name. Must be google or github.',
+      );
     }
 
     await this.oauthService.revokeOAuthAccount(user.id, provider);
-    return { success: true, message: `Disconnected ${provider} account successfully` };
+    return {
+      success: true,
+      message: `Disconnected ${provider} account successfully`,
+    };
   }
 
   // ─── Logout & Profile ──────────────────────────────────────────────────────

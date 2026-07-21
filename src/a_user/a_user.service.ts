@@ -7,6 +7,10 @@ type UserUpdateData = Partial<{
   avatarUrl: string | null;
   username: string | null;
   passwordHash: string | null;
+  emailVerifiedAt: Date | null;
+  emailVerificationTokenHash: string | null;
+  emailVerificationExpiresAt: Date | null;
+  emailVerificationSentAt: Date | null;
 }>;
 
 @Injectable()
@@ -33,12 +37,22 @@ export class AUserService {
     return this.prisma.user.findUnique({ where: { id } });
   }
 
+  findByVerificationToken(emailVerificationTokenHash: string) {
+    return this.prisma.user.findUnique({
+      where: { emailVerificationTokenHash },
+    });
+  }
+
   create(data: {
     email?: string | null;
     name?: string | null;
     avatarUrl?: string | null;
     username?: string | null;
     passwordHash?: string | null;
+    emailVerifiedAt?: Date | null;
+    emailVerificationTokenHash?: string | null;
+    emailVerificationExpiresAt?: Date | null;
+    emailVerificationSentAt?: Date | null;
   }) {
     return this.prisma.user.create({ data });
   }

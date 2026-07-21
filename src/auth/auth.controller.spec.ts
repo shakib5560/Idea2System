@@ -21,8 +21,12 @@ describe('AuthController', () => {
       generateNonce: jest.fn().mockReturnValue('mock-nonce'),
     };
     const mockOAuthProviderService = {
-      getGoogleAuthUrl: jest.fn().mockReturnValue('https://accounts.google.com/o/oauth2/auth'),
-      getGithubAuthUrl: jest.fn().mockReturnValue('https://github.com/login/oauth/authorize'),
+      getGoogleAuthUrl: jest
+        .fn()
+        .mockReturnValue('https://accounts.google.com/o/oauth2/auth'),
+      getGithubAuthUrl: jest
+        .fn()
+        .mockReturnValue('https://github.com/login/oauth/authorize'),
       exchangeGoogleCode: jest.fn(),
       exchangeGithubCode: jest.fn(),
     };

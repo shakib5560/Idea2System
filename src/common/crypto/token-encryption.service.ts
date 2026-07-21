@@ -8,8 +8,10 @@ export class TokenEncryptionService {
   private readonly key: Buffer;
 
   constructor(private readonly configService: ConfigService) {
-    const rawKey = this.configService.get<string>('TOKEN_ENCRYPTION_KEY') || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-    
+    const rawKey =
+      this.configService.get<string>('TOKEN_ENCRYPTION_KEY') ||
+      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
     if (Buffer.from(rawKey, 'hex').length === 32) {
       this.key = Buffer.from(rawKey, 'hex');
     } else if (Buffer.from(rawKey, 'utf8').length === 32) {
@@ -25,10 +27,10 @@ export class TokenEncryptionService {
     try {
       const iv = crypto.randomBytes(12);
       const cipher = crypto.createCipheriv(this.algorithm, this.key, iv);
-      
+
       let encrypted = cipher.update(plaintext, 'utf8', 'hex');
       encrypted += cipher.final('hex');
-      
+
       const authTag = cipher.getAuthTag().toString('hex');
       const ivHex = iv.toString('hex');
 

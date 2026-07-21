@@ -9,6 +9,7 @@ interface JwtPayload {
   email?: string | null;
   name?: string | null;
   username?: string | null;
+  emailVerified?: boolean;
 }
 
 @Injectable()
@@ -18,7 +19,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       jwtFromRequest: ExtractJwt.fromExtractors([
         ExtractJwt.fromAuthHeaderAsBearerToken(),
         (req: Request) => {
-          return req?.signedCookies?.__session || req?.cookies?.__session || null;
+          return (
+            req?.signedCookies?.__session || req?.cookies?.__session || null
+          );
         },
       ]),
       ignoreExpiration: false,
@@ -36,6 +39,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       email: payload.email,
       name: payload.name,
       username: payload.username,
+      emailVerified: payload.emailVerified,
     };
   }
 }

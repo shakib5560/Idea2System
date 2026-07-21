@@ -89,6 +89,8 @@ Create `core-api/.env` and add the following values. Do not commit this file.
 PORT=5000
 NODE_ENV=development
 CLIENT_URL=http://localhost:3000
+# Public address of this API. It is used in links sent by verification emails.
+API_URL=http://localhost:5000
 
 DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/idea2system?schema=public
 
@@ -96,6 +98,11 @@ JWT_SECRET=replace-with-a-long-random-secret
 COOKIE_SECRET=replace-with-a-long-random-secret
 # Exactly 64 hexadecimal characters (32 bytes)
 TOKEN_ENCRYPTION_KEY=replace-with-a-64-character-hex-key
+
+# Transactional email (Resend). In development, omitting RESEND_API_KEY logs
+# the verification link instead of sending it.
+RESEND_API_KEY=re_your-resend-api-key
+EMAIL_FROM=Idea2System <onboarding@your-verified-domain.com>
 
 GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
@@ -136,6 +143,8 @@ http://localhost:5000/api/v1.0/docs
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/v1.0/auth/register` | Create an account with email and password |
+| `GET` | `/api/v1.0/auth/verify-email?token=...` | Verify a newly registered email address |
+| `POST` | `/api/v1.0/auth/resend-verification` | Request a new verification link (`{ "email": "..." }`) |
 | `POST` | `/api/v1.0/auth/login` | Sign in with email and password |
 | `GET` | `/api/v1.0/auth/google` | Start Google sign-in |
 | `GET` | `/api/v1.0/auth/github` | Start GitHub sign-in |

@@ -15,12 +15,14 @@ import { OAuthAccountRepository } from './oauth/oauth-account.repository';
 import { OAuthService } from './oauth/oauth.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { MailModule } from '../common/mail/mail.module';
 
 @Module({
   imports: [
     AUserModule,
     PrismaModule,
     CryptoModule,
+    MailModule,
     PassportModule,
     ConfigModule,
     JwtModule.registerAsync({

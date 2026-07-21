@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 export interface OAuthUserProfile {
@@ -31,7 +35,11 @@ export class OAuthProviderService {
 
   // ─── Google OAuth 2.0 / OIDC ───────────────────────────────────────────────
 
-  getGoogleAuthUrl(state: string, codeChallenge: string, nonce: string): string {
+  getGoogleAuthUrl(
+    state: string,
+    codeChallenge: string,
+    nonce: string,
+  ): string {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID')!;
     const redirectUri = this.configService.get<string>('GOOGLE_CALLBACK_URL')!;
 
@@ -57,7 +65,9 @@ export class OAuthProviderService {
     expectedNonce: string,
   ): Promise<OAuthTokenResponse> {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID')!;
-    const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET')!;
+    const clientSecret = this.configService.get<string>(
+      'GOOGLE_CLIENT_SECRET',
+    )!;
     const redirectUri = this.configService.get<string>('GOOGLE_CALLBACK_URL')!;
 
     const body = new URLSearchParams({
@@ -88,7 +98,11 @@ export class OAuthProviderService {
     }
 
     // Validate ID Token payload (OIDC requirements: iss, aud, exp, nonce)
-    const payload = this.decodeAndValidateGoogleIdToken(id_token, clientId, expectedNonce);
+    const payload = this.decodeAndValidateGoogleIdToken(
+      id_token,
+      clientId,
+      expectedNonce,
+    );
 
     const userProfile: OAuthUserProfile = {
       providerAccountId: payload.sub,
@@ -113,9 +127,13 @@ export class OAuthProviderService {
     };
   }
 
-  async refreshGoogleToken(refreshToken: string): Promise<RefreshTokenResponse> {
+  async refreshGoogleToken(
+    refreshToken: string,
+  ): Promise<RefreshTokenResponse> {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID')!;
-    const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET')!;
+    const clientSecret = this.configService.get<string>(
+      'GOOGLE_CLIENT_SECRET',
+    )!;
 
     const body = new URLSearchParams({
       client_id: clientId,
@@ -140,7 +158,9 @@ export class OAuthProviderService {
     return {
       accessToken: data.access_token,
       refreshToken: data.refresh_token || null, // in case of token rotation
-      accessTokenExpiresAt: expires_in ? new Date(Date.now() + expires_in * 1000) : null,
+      accessTokenExpiresAt: expires_in
+        ? new Date(Date.now() + expires_in * 1000)
+        : null,
     };
   }
 
@@ -165,12 +185,16 @@ export class OAuthProviderService {
     // Verify Issuer
     const validIssuers = ['https://accounts.google.com', 'accounts.google.com'];
     if (!validIssuers.includes(payload.iss)) {
-      throw new UnauthorizedException(`Invalid ID token issuer: ${payload.iss}`);
+      throw new UnauthorizedException(
+        `Invalid ID token issuer: ${payload.iss}`,
+      );
     }
 
     // Verify Audience
     if (payload.aud !== expectedClientId) {
-      throw new UnauthorizedException('ID token audience does not match Client ID');
+      throw new UnauthorizedException(
+        'ID token audience does not match Client ID',
+      );
     }
 
     // Verify Expiration
@@ -213,7 +237,9 @@ export class OAuthProviderService {
     codeVerifier?: string,
   ): Promise<OAuthTokenResponse> {
     const clientId = this.configService.get<string>('GITHUB_CLIENT_ID')!;
-    const clientSecret = this.configService.get<string>('GITHUB_CLIENT_SECRET')!;
+    const clientSecret = this.configService.get<string>(
+      'GITHUB_CLIENT_SECRET',
+    )!;
     const redirectUri = this.configService.get<string>('GITHUB_CALLBACK_URL')!;
 
     const body: Record<string, string> = {
@@ -244,7 +270,9 @@ export class OAuthProviderService {
     const data = await res.json();
 
     if (data.error) {
-      throw new BadRequestException(`GitHub OAuth error: ${data.error_description || data.error}`);
+      throw new BadRequestException(
+        `GitHub OAuth error: ${data.error_description || data.error}`,
+      );
     }
 
     const { access_token, refresh_token, expires_in, scope } = data;
@@ -266,9 +294,13 @@ export class OAuthProviderService {
     };
   }
 
-  async refreshGithubToken(refreshToken: string): Promise<RefreshTokenResponse> {
+  async refreshGithubToken(
+    refreshToken: string,
+  ): Promise<RefreshTokenResponse> {
     const clientId = this.configService.get<string>('GITHUB_CLIENT_ID')!;
-    const clientSecret = this.configService.get<string>('GITHUB_CLIENT_SECRET')!;
+    const clientSecret = this.configService.get<string>(
+      'GITHUB_CLIENT_SECRET',
+    )!;
 
     const res = await fetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
@@ -290,7 +322,9 @@ export class OAuthProviderService {
 
     const data = await res.json();
     if (data.error) {
-      throw new UnauthorizedException(`GitHub refresh error: ${data.error_description || data.error}`);
+      throw new UnauthorizedException(
+        `GitHub refresh error: ${data.error_description || data.error}`,
+      );
     }
 
     const expires_in = data.expires_in;
@@ -298,11 +332,15 @@ export class OAuthProviderService {
     return {
       accessToken: data.access_token,
       refreshToken: data.refresh_token || null,
-      accessTokenExpiresAt: expires_in ? new Date(Date.now() + expires_in * 1000) : null,
+      accessTokenExpiresAt: expires_in
+        ? new Date(Date.now() + expires_in * 1000)
+        : null,
     };
   }
 
-  private async fetchGithubUserProfile(accessToken: string): Promise<OAuthUserProfile> {
+  private async fetchGithubUserProfile(
+    accessToken: string,
+  ): Promise<OAuthUserProfile> {
     const userRes = await fetch('https://api.github.com/user', {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -311,7 +349,9 @@ export class OAuthProviderService {
     });
 
     if (!userRes.ok) {
-      throw new UnauthorizedException('Failed to fetch user profile from GitHub');
+      throw new UnauthorizedException(
+        'Failed to fetch user profile from GitHub',
+      );
     }
 
     const ghUser = await userRes.json();
@@ -329,8 +369,15 @@ export class OAuthProviderService {
       });
 
       if (emailsRes.ok) {
-        const emails: Array<{ email: string; primary: boolean; verified: boolean }> = await emailsRes.json();
-        const primaryEmail = emails.find((e) => e.primary && e.verified) || emails.find((e) => e.verified) || emails[0];
+        const emails: Array<{
+          email: string;
+          primary: boolean;
+          verified: boolean;
+        }> = await emailsRes.json();
+        const primaryEmail =
+          emails.find((e) => e.primary && e.verified) ||
+          emails.find((e) => e.verified) ||
+          emails[0];
         if (primaryEmail) {
           email = primaryEmail.email;
           emailVerified = primaryEmail.verified;

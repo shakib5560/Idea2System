@@ -19,10 +19,7 @@ export class OAuthStateService {
   }
 
   generateCodeChallenge(verifier: string): string {
-    return crypto
-      .createHash('sha256')
-      .update(verifier)
-      .digest('base64url');
+    return crypto.createHash('sha256').update(verifier).digest('base64url');
   }
 
   generateNonce(): string {

@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { OAuthService } from './oauth.service';
 import { AUserService } from '../../a_user/a_user.service';
 import { OAuthAccountRepository } from './oauth-account.repository';
-import { OAuthProviderService, OAuthTokenResponse } from './oauth-provider.service';
+import {
+  OAuthProviderService,
+  OAuthTokenResponse,
+} from './oauth-provider.service';
 import { UnauthorizedException } from '@nestjs/common';
 import { User, OAuthAccount } from '@prisma/client';
 
@@ -94,9 +97,15 @@ describe('OAuthService', () => {
       oauthRepo.updateTokens.mockResolvedValue(mockOAuthAccount);
       userService.findById.mockResolvedValue(mockUser);
 
-      const result = await service.handleOAuthCallback('google', mockTokenResponse);
+      const result = await service.handleOAuthCallback(
+        'google',
+        mockTokenResponse,
+      );
 
-      expect(oauthRepo.findByProvider).toHaveBeenCalledWith('google', 'google-sub-999');
+      expect(oauthRepo.findByProvider).toHaveBeenCalledWith(
+        'google',
+        'google-sub-999',
+      );
       expect(oauthRepo.updateTokens).toHaveBeenCalled();
       expect(userService.findById).toHaveBeenCalledWith('user-123');
       expect(result.user).toEqual(mockUser);
@@ -108,7 +117,10 @@ describe('OAuthService', () => {
       userService.findByEmail.mockResolvedValue(mockUser);
       oauthRepo.create.mockResolvedValue(mockOAuthAccount);
 
-      const result = await service.handleOAuthCallback('google', mockTokenResponse);
+      const result = await service.handleOAuthCallback(
+        'google',
+        mockTokenResponse,
+      );
 
       expect(userService.findByEmail).toHaveBeenCalledWith('test@example.com');
       expect(userService.create).not.toHaveBeenCalled();
@@ -128,7 +140,10 @@ describe('OAuthService', () => {
       userService.create.mockResolvedValue(mockUser);
       oauthRepo.create.mockResolvedValue(mockOAuthAccount);
 
-      const result = await service.handleOAuthCallback('google', mockTokenResponse);
+      const result = await service.handleOAuthCallback(
+        'google',
+        mockTokenResponse,
+      );
 
       expect(userService.create).toHaveBeenCalledWith({
         email: 'test@example.com',
@@ -168,7 +183,9 @@ describe('OAuthService', () => {
 
       const result = await service.ensureValidProviderToken('oauth-acc-123');
 
-      expect(providerService.refreshGoogleToken).toHaveBeenCalledWith('mock-refresh-token');
+      expect(providerService.refreshGoogleToken).toHaveBeenCalledWith(
+        'mock-refresh-token',
+      );
       expect(oauthRepo.updateTokens).toHaveBeenCalled();
       expect(result.accessToken).toBe('refreshed-access-token');
     });
@@ -179,11 +196,13 @@ describe('OAuthService', () => {
         accessTokenExpiresAt: new Date(Date.now() - 1000),
       };
       oauthRepo.findById.mockResolvedValue(expiredAccount);
-      providerService.refreshGoogleToken.mockRejectedValue(new Error('Invalid refresh token'));
-
-      await expect(service.ensureValidProviderToken('oauth-acc-123')).rejects.toThrow(
-        UnauthorizedException,
+      providerService.refreshGoogleToken.mockRejectedValue(
+        new Error('Invalid refresh token'),
       );
+
+      await expect(
+        service.ensureValidProviderToken('oauth-acc-123'),
+      ).rejects.toThrow(UnauthorizedException);
       expect(oauthRepo.clearTokens).toHaveBeenCalledWith('oauth-acc-123');
     });
   });
