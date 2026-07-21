@@ -15,22 +15,16 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/create-auth.dto';
 import { LoginDto } from './dto/login-auth.dto';
 import { OAuthStateService } from './oauth/oauth-state.service';
 import { OAuthProviderService } from './oauth/oauth-provider.service';
 import { OAuthService } from './oauth/oauth.service';
-
-type AuthenticatedRequest = Request & {
-  user: {
-    id: string;
-    email?: string | null;
-    name?: string | null;
-    username?: string | null;
-  };
-};
-
+import { Public } from './decorators/public.decorator';
+import { CurrentUser } from './decorators/current-user.decorator';
+import type { AuthenticatedUser } from './interfaces/authenticated-user.interface';
 
 @Controller('auth')
 export class AuthController {
@@ -46,19 +40,21 @@ export class AuthController {
     this.isProd = this.configService.get<string>('NODE_ENV') === 'production';
   }
 
+  @Public()
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
+  @Public()
   @UseGuards(AuthGuard('local'))
   @Post('login')
   login(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() _dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const tokenResult = this.authService.createToken(req.user);
+    const tokenResult = this.authService.createToken(user);
     
     // Set HTTP-only session cookie
     res.cookie('__session', tokenResult.accessToken, {
@@ -74,6 +70,7 @@ export class AuthController {
 
   // ─── Google OAuth Flow with PKCE & OIDC ────────────────────────────────────
 
+  @Public()
   @Get('google')
   googleLogin(@Res() res: Response) {
     const state = this.oauthStateService.generateState();
@@ -99,6 +96,7 @@ export class AuthController {
     return res.redirect(redirectUrl);
   }
 
+  @Public()
   @Get('google/callback')
   async googleCallback(
     @Query('code') code: string,
@@ -160,6 +158,7 @@ export class AuthController {
 
   // ─── GitHub OAuth Flow ──────────────────────────────────────────────────────
 
+  @Public()
   @Get('github')
   githubLogin(@Res() res: Response) {
     const state = this.oauthStateService.generateState();
@@ -178,6 +177,7 @@ export class AuthController {
     return res.redirect(redirectUrl);
   }
 
+  @Public()
   @Get('github/callback')
   async githubCallback(
     @Query('code') code: string,
@@ -235,17 +235,17 @@ export class AuthController {
 
   // ─── Provider Token Refresh & Revoke ────────────────────────────────────────
 
-  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('access-token')
   @Post('refresh-provider-token/:provider')
   async refreshProviderToken(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('provider') provider: 'google' | 'github',
   ) {
     if (provider !== 'google' && provider !== 'github') {
       throw new BadRequestException('Invalid provider name. Must be google or github.');
     }
 
-    const userAccounts = await this.oauthService['oauthRepo'].findByUserId(req.user.id);
+    const userAccounts = await this.oauthService['oauthRepo'].findByUserId(user.id);
     const targetAccount = userAccounts.find((acc) => acc.provider === provider);
 
     if (!targetAccount) {
@@ -256,31 +256,32 @@ export class AuthController {
     return { success: true, message: `Provider token for ${provider} refreshed successfully` };
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('access-token')
   @Delete('oauth/:provider')
   async revokeOAuthAccount(
-    @Req() req: AuthenticatedRequest,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('provider') provider: 'google' | 'github',
   ) {
     if (provider !== 'google' && provider !== 'github') {
       throw new BadRequestException('Invalid provider name. Must be google or github.');
     }
 
-    await this.oauthService.revokeOAuthAccount(req.user.id, provider);
+    await this.oauthService.revokeOAuthAccount(user.id, provider);
     return { success: true, message: `Disconnected ${provider} account successfully` };
   }
 
   // ─── Logout & Profile ──────────────────────────────────────────────────────
 
+  @Public()
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
     res.clearCookie('__session');
     return { success: true, message: 'Logged out successfully' };
   }
 
+  @ApiBearerAuth('access-token')
   @Get('me')
-  @UseGuards(AuthGuard('jwt'))
-  me(@Req() req: AuthenticatedRequest) {
-    return req.user;
+  me(@CurrentUser() user: AuthenticatedUser) {
+    return user;
   }
 }

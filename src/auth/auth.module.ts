@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { AUserModule } from '../a_user/a_user.module';
@@ -13,6 +14,7 @@ import { OAuthProviderService } from './oauth/oauth-provider.service';
 import { OAuthAccountRepository } from './oauth/oauth-account.repository';
 import { OAuthService } from './oauth/oauth.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -39,6 +41,10 @@ import { PrismaModule } from '../prisma/prisma.module';
     OAuthProviderService,
     OAuthAccountRepository,
     OAuthService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
   ],
   exports: [AuthService, OAuthService],
 })
