@@ -7,6 +7,39 @@ datasource db {
 }
 
 model message {
-  id    Int    @id @default(autoincrement())
+  id      Int     @id @default(autoincrement())
   message String?
 }
+
+model User {
+  id           String         @id @default(cuid())
+  email        String?        @unique
+  name         String?
+  avatarUrl    String?        @map("avatar_url")
+  username     String?        @unique
+  passwordHash String?        @map("password_hash")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  oauthAccounts OAuthAccount[]
+
+  @@map("users")
+}
+
+model OAuthAccount {
+  id                   String    @id @default(cuid())
+  userId               String    @map("user_id")
+  provider             String
+  providerAccountId    String    @map("provider_account_id")
+  accessToken          String?   @map("access_token")
+  refreshToken         String?   @map("refresh_token")
+  accessTokenExpiresAt DateTime? @map("access_token_expires_at")
+  scope                String?
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId], name: "provider_providerAccountId")
+  @@map("oauth_accounts")
+}
+

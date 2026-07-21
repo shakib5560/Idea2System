@@ -36,7 +36,9 @@ async function bootstrap() {
 
   // ─── Cookie Parser ───────────────────────────────────────────────────────────
   // Parses Cookie header and populates req.cookies / req.signedCookies
-  app.use(cookieParser());
+  const cookieSecret = config.get<string>('COOKIE_SECRET', 'super-secret-cookie-signing-key-123456789');
+  app.use(cookieParser(cookieSecret));
+
 
   // ─── Rate Limiting ───────────────────────────────────────────────────────────
   // Limits each IP to 100 requests per 15 minutes (protects against brute force)
