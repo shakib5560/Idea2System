@@ -20,7 +20,7 @@
 <br>
 
 <div align="center">
-<sub>NESTJS &nbsp;·&nbsp; TYPESCRIPT &nbsp;·&nbsp; POSTGRESQL &nbsp;·&nbsp; PRISMA &nbsp;·&nbsp; SWAGGER</sub>
+<sub>NESTJS &nbsp;·&nbsp; TYPESCRIPT &nbsp;·&nbsp; POSTGRESQL &nbsp;·&nbsp; PRISMA &nbsp;·&nbsp; REDIS &nbsp;·&nbsp; SWAGGER</sub>
 </div>
 
 <br><br>
@@ -66,6 +66,8 @@ The repository currently ships the **Core API** — the authenticated foundation
 - Google OAuth 2.0 / OIDC login with PKCE
 - GitHub OAuth login with PKCE
 - Encrypted storage of provider tokens
+- Redis-backed caching layer for authenticated reads
+- JWT blacklisting for logout and forced session revocation
 - Request validation, CORS, Helmet, compression, rate limiting
 - Swagger / OpenAPI documentation
 
@@ -82,6 +84,7 @@ The repository currently ships the **Core API** — the authenticated foundation
 | API | NestJS · TypeScript |
 | Database | PostgreSQL |
 | ORM | Prisma |
+| Cache & session store | Redis (Upstash) |
 | Auth | Passport · JWT · Google OAuth · GitHub OAuth |
 | Docs | Swagger / OpenAPI |
 | Package manager | pnpm |
@@ -94,7 +97,8 @@ The repository currently ships the **Core API** — the authenticated foundation
 .
 ├── core-api/              NestJS backend application
 │   ├── prisma/             Prisma schema and migrations
-│   ├── src/auth/            Local and OAuth authentication
+│   ├── src/auth/            Local and OAuth authentication, JWT strategy, token blacklist service
+│   ├── src/redis/           Redis client module (cache + blacklist)
 │   ├── src/common/          Shared services, including token encryption
 │   └── src/prisma/          Prisma module and service
 └── README.md
@@ -104,7 +108,7 @@ The repository currently ships the **Core API** — the authenticated foundation
 
 ## Getting started
 
-**Prerequisites** — Node.js 20+, pnpm 9+, PostgreSQL
+**Prerequisites** — Node.js 20+, pnpm 9+, PostgreSQL, Redis (Upstash free tier recommended)
 
 <br>
 
@@ -147,8 +151,8 @@ GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_CALLBACK_URL=http://localhost:5000/api/v1.0/auth/google/callback
 
-# Redis configuration (Upstash - TLS required, single database).
-# Note: Key prefixing is used instead of database index splitting.
+# Redis configuration (Upstash — TLS required, single database).
+# Key prefixing (cache: / bl:) is used instead of database index splitting.
 REDIS_HOST=your-upstash-redis-endpoint.upstash.io
 REDIS_PORT=6379
 REDIS_PASSWORD=your-upstash-redis-password
@@ -191,18 +195,24 @@ Swagger (dev only) → `http://localhost:5000/api/v1.0/docs`
 | `POST` | `/api/v1.0/auth/login` | Sign in with email and password |
 | `GET` | `/api/v1.0/auth/google` | Start Google sign-in |
 | `GET` | `/api/v1.0/auth/github` | Start GitHub sign-in |
-| `GET` | `/api/v1.0/auth/me` | Get the authenticated user profile (cached) |
-| `POST` | `/api/v1.0/auth/logout` | End the application session (blacklists current token) |
-| `POST` | `/api/v1.0/auth/logout-everywhere` | End the session on all devices (invalidates all user tokens) |
-| `GET` | `/api/v1.0/health` | Check API and Redis connectivity health status |
+| `GET` | `/api/v1.0/auth/me` | Get the authenticated user profile (Redis-cached) |
+| `POST` | `/api/v1.0/auth/logout` | End the current session and blacklist the active token |
+| `POST` | `/api/v1.0/auth/logout-everywhere` | Revoke all active tokens for the authenticated user |
+| `GET` | `/api/v1.0/health` | Report API and Redis connectivity status |
 
 <sub>Full OAuth configuration and endpoint list in the <a href="core-api/README.md">Core API README</a>.</sub>
 
 <br>
 
+## Redis usage
+
+Redis (Upstash) backs two responsibilities in the Core API:
+
+- **Caching** — short-lived storage for authenticated reads (e.g. `auth/me`) under the `cache:` key prefix, reducing repeated database lookups.
+- **JWT blacklisting** — every issued JWT carries a unique `jti` claim. On logout, that `jti` is stored under the `bl:` key prefix with a TTL matching the token's remaining lifetime, so the entry expires naturally and never outlives the token it revokes. A parallel `bl:user:<id>` key supports revoking every token belonging to a user at once, used for "log out everywhere" and password-change flows.
+
 > [!IMPORTANT]
-> **Security & Fail-Closed Behavior**:
-> Token blacklist verification operates in a **fail-closed** manner. If the Redis server is unreachable, authentication validation checks will fail (throwing `401 Unauthorized` or `500 Internal Server Error`) to prevent revoked tokens from bypassing validation.
+> **Fail-closed by design.** Token blacklist checks run on every authenticated request. If Redis is unreachable, requests are rejected (`401 Unauthorized`) rather than allowed through — a revoked token must never be treated as valid just because the blacklist couldn't be checked.
 
 <br>
 
@@ -225,6 +235,7 @@ Swagger (dev only) → `http://localhost:5000/api/v1.0/docs`
 
 - [x] Core API and user authentication
 - [x] Google and GitHub OAuth
+- [x] Redis caching and JWT blacklist logout
 - [ ] Idea intake and project workspace
 - [ ] AI-assisted requirements generation
 - [ ] Database schema and ERD generation
