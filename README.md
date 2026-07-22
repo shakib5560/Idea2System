@@ -1,4 +1,4 @@
-# Idea2System
+# Idea2System ***
 
 **Idea2System** is an AI-powered software planning platform that turns a business idea into a practical technical blueprint for building a product.
 
@@ -45,14 +45,14 @@ The AI-generated planning modules and client application are planned next.
 
 ## Tech stack
 
-| Area | Technology |
-| --- | --- |
-| API | NestJS, TypeScript |
-| Database | PostgreSQL |
-| ORM | Prisma |
-| Authentication | Passport, JWT, Google OAuth, GitHub OAuth |
-| API documentation | Swagger / OpenAPI |
-| Package manager | pnpm |
+| Area              | Technology                                |
+| ----------------- | ----------------------------------------- |
+| API               | NestJS, TypeScript                        |
+| Database          | PostgreSQL                                |
+| ORM               | Prisma                                    |
+| Authentication    | Passport, JWT, Google OAuth, GitHub OAuth |
+| API documentation | Swagger / OpenAPI                         |
+| Package manager   | pnpm                                      |
 
 ## Repository structure
 
@@ -140,16 +140,16 @@ http://localhost:5000/api/v1.0/docs
 
 ## Authentication endpoints
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/v1.0/auth/register` | Create an account with email and password |
-| `GET` | `/api/v1.0/auth/verify-email?token=...` | Verify a newly registered email address |
-| `POST` | `/api/v1.0/auth/resend-verification` | Request a new verification link (`{ "email": "..." }`) |
-| `POST` | `/api/v1.0/auth/login` | Sign in with email and password |
-| `GET` | `/api/v1.0/auth/google` | Start Google sign-in |
-| `GET` | `/api/v1.0/auth/github` | Start GitHub sign-in |
-| `GET` | `/api/v1.0/auth/me` | Get the authenticated user profile |
-| `POST` | `/api/v1.0/auth/logout` | End the application session |
+| Method | Endpoint                                | Purpose                                                |
+| ------ | --------------------------------------- | ------------------------------------------------------ |
+| `POST` | `/api/v1.0/auth/register`               | Create an account with email and password              |
+| `GET`  | `/api/v1.0/auth/verify-email?token=...` | Verify a newly registered email address                |
+| `POST` | `/api/v1.0/auth/resend-verification`    | Request a new verification link (`{ "email": "..." }`) |
+| `POST` | `/api/v1.0/auth/login`                  | Sign in with email and password                        |
+| `GET`  | `/api/v1.0/auth/google`                 | Start Google sign-in                                   |
+| `GET`  | `/api/v1.0/auth/github`                 | Start GitHub sign-in                                   |
+| `GET`  | `/api/v1.0/auth/me`                     | Get the authenticated user profile                     |
+| `POST` | `/api/v1.0/auth/logout`                 | End the application session                            |
 
 See the [Core API README](core-api/README.md) for the complete OAuth configuration and endpoint list.
 
