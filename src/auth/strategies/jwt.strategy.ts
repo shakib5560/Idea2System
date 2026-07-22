@@ -5,29 +5,27 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
 import { TokenBlacklistService } from '../token-blacklist.service';
 
-interface JwtPayload {
+export interface JwtPayload {
+  jti?: string;
   sub: string;
   email?: string | null;
   name?: string | null;
   username?: string | null;
-  emailVerified?: boolean;
-  jti?: string;
   iat?: number;
+  exp?: number;
 }
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
     config: ConfigService,
-    private readonly blacklistService: TokenBlacklistService,
+    private readonly tokenBlacklistService: TokenBlacklistService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         ExtractJwt.fromAuthHeaderAsBearerToken(),
         (req: Request) => {
-          return (
-            req?.signedCookies?.__session || req?.cookies?.__session || null
-          );
+          return req?.signedCookies?.__session || req?.cookies?.__session || null;
         },
       ]),
       ignoreExpiration: false,
@@ -37,24 +35,27 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
   /**
    * Called after the JWT is successfully verified.
-   * The return value is attached to req.user.
+   * Checks blacklist and attaches payload details to req.user.
    */
   async validate(payload: JwtPayload) {
-    if (!payload.jti) {
-      throw new UnauthorizedException('Invalid token: missing identifier.');
-    }
-    if (!payload.iat) {
-      throw new UnauthorizedException('Invalid token: missing issued at timestamp.');
-    }
-
-    const isTokenBlacklisted = await this.blacklistService.isBlacklisted(payload.jti);
-    if (isTokenBlacklisted) {
-      throw new UnauthorizedException('Token has been blacklisted.');
+    if (payload.jti) {
+      const isBlacklisted = await this.tokenBlacklistService.isBlacklisted(
+        payload.jti,
+      );
+      if (isBlacklisted) {
+        throw new UnauthorizedException('Token has been revoked');
+      }
     }
 
-    const isUserBlacklisted = await this.blacklistService.isUserBlacklisted(payload.sub, payload.iat);
-    if (isUserBlacklisted) {
-      throw new UnauthorizedException('User has been logged out from all devices.');
+    if (payload.sub && payload.iat) {
+      const isUserBlacklisted =
+        await this.tokenBlacklistService.isUserBlacklisted(
+          payload.sub,
+          payload.iat,
+        );
+      if (isUserBlacklisted) {
+        throw new UnauthorizedException('Session has been revoked');
+      }
     }
 
     return {
@@ -62,7 +63,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       email: payload.email,
       name: payload.name,
       username: payload.username,
-      emailVerified: payload.emailVerified,
+      jti: payload.jti,
+      exp: payload.exp,
     };
   }
 }

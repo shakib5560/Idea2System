@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,9 +11,6 @@ type UserUpdateData = Partial<{
   username: string | null;
   passwordHash: string | null;
   emailVerifiedAt: Date | null;
-  emailVerificationTokenHash: string | null;
-  emailVerificationExpiresAt: Date | null;
-  emailVerificationSentAt: Date | null;
 }>;
 
 @Injectable()
@@ -39,33 +36,23 @@ export class AUserService {
     });
   }
 
+  /**
+   * Cached lookup for user by ID (~5 min TTL).
+   */
   async findById(id: string): Promise<User | null> {
     const cacheKey = `user:${id}`;
-    try {
-      const cached = await this.cacheManager.get<User>(cacheKey);
-      if (cached) {
-        return cached;
-      }
-    } catch (err) {
-      // Fail-open: cache failures do not break database query
+    const cachedUser = await this.cacheManager.get<User>(cacheKey);
+    if (cachedUser) {
+      return cachedUser;
     }
 
     const user = await this.prisma.user.findUnique({ where: { id } });
-
     if (user) {
-      try {
-        await this.cacheManager.set(cacheKey, user, 300 * 1000); // 5 minutes in milliseconds
-      } catch (err) {
-        // Fail-open: cache write failure should not affect response
-      }
+      // 5 minutes (300,000 ms)
+      await this.cacheManager.set(cacheKey, user, 300000);
     }
-    return user;
-  }
 
-  findByVerificationToken(emailVerificationTokenHash: string) {
-    return this.prisma.user.findUnique({
-      where: { emailVerificationTokenHash },
-    });
+    return user;
   }
 
   create(data: {
@@ -75,23 +62,17 @@ export class AUserService {
     username?: string | null;
     passwordHash?: string | null;
     emailVerifiedAt?: Date | null;
-    emailVerificationTokenHash?: string | null;
-    emailVerificationExpiresAt?: Date | null;
-    emailVerificationSentAt?: Date | null;
   }) {
     return this.prisma.user.create({ data });
   }
 
   async update(id: string, data: UserUpdateData) {
-    const user = await this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id },
       data,
     });
-    try {
-      await this.cacheManager.del(`user:${id}`);
-    } catch (err) {
-      // Fail-open: cache deletion failures should not block updates
-    }
-    return user;
+    // Invalidate cached user on update
+    await this.cacheManager.del(`user:${id}`);
+    return updatedUser;
   }
 }

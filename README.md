@@ -198,6 +198,7 @@ Swagger (dev only) → `http://localhost:5000/api/v1.0/docs`
 | `GET` | `/api/v1.0/auth/me` | Get the authenticated user profile (Redis-cached) |
 | `POST` | `/api/v1.0/auth/logout` | End the current session and blacklist the active token |
 | `POST` | `/api/v1.0/auth/logout-everywhere` | Revoke all active tokens for the authenticated user |
+| `POST` | `/api/v1.0/auth/change-password` | Change user password and revoke all active sessions |
 | `GET` | `/api/v1.0/health` | Report API and Redis connectivity status |
 
 <sub>Full OAuth configuration and endpoint list in the <a href="core-api/README.md">Core API README</a>.</sub>

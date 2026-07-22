@@ -22,6 +22,10 @@ describe('OAuthService', () => {
     avatarUrl: 'https://example.com/avatar.png',
     username: null,
     passwordHash: null,
+    emailVerificationTokenHash: null,
+    emailVerifiedAt: null,
+    emailVerificationExpiresAt: null,
+    emailVerificationSentAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { AUserModule } from '../a_user/a_user.module';
@@ -14,9 +13,6 @@ import { OAuthProviderService } from './oauth/oauth-provider.service';
 import { OAuthAccountRepository } from './oauth/oauth-account.repository';
 import { OAuthService } from './oauth/oauth.service';
 import { PrismaModule } from '../prisma/prisma.module';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { MailModule } from '../common/mail/mail.module';
-
 import { TokenBlacklistService } from './token-blacklist.service';
 
 @Module({
@@ -24,7 +20,6 @@ import { TokenBlacklistService } from './token-blacklist.service';
     AUserModule,
     PrismaModule,
     CryptoModule,
-    MailModule,
     PassportModule,
     ConfigModule,
     JwtModule.registerAsync({
@@ -46,10 +41,6 @@ import { TokenBlacklistService } from './token-blacklist.service';
     OAuthAccountRepository,
     OAuthService,
     TokenBlacklistService,
-    {
-      provide: APP_GUARD,
-      useClass: JwtAuthGuard,
-    },
   ],
   exports: [AuthService, OAuthService, TokenBlacklistService],
 })

@@ -1,70 +1,101 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { RedisService } from '../common/redis/redis.service';
+import {
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class TokenBlacklistService {
   private readonly logger = new Logger(TokenBlacklistService.name);
+  private readonly PREFIX_JTI = 'bl:';
+  private readonly PREFIX_USER = 'bl:user:';
 
-  constructor(private readonly redisService: RedisService) {}
+  constructor(private readonly redis: RedisService) {}
 
   /**
-   * Blacklists a single JTI until its natural expiration.
-   * @param jti The unique token identifier
-   * @param exp The expiration timestamp of the token (in seconds)
+   * Blacklist a specific token by its `jti` until its natural expiration time (`exp`).
    */
   async blacklist(jti: string, exp: number): Promise<void> {
-    const now = Math.floor(Date.now() / 1000);
-    const ttl = exp - now;
+    if (!jti) return;
+    const nowInSeconds = Math.floor(Date.now() / 1000);
+    const ttl = Math.max(1, exp - nowInSeconds);
 
-    if (ttl <= 0) {
-      this.logger.debug(`Token ${jti} is already naturally expired. Skipping blacklist.`);
-      return;
+    try {
+      await this.redis.set(`${this.PREFIX_JTI}${jti}`, 'revoked', 'EX', ttl);
+    } catch (error: any) {
+      this.logger.error(`Failed to blacklist token ${jti}`, error?.stack);
+      throw new UnauthorizedException('Security check failed (Redis error)');
     }
-
-    const client = this.redisService.getClient();
-    // Use the bl: key prefix for blacklist keys
-    await client.set(`bl:${jti}`, '1', 'EX', ttl);
-    this.logger.log(`Blacklisted token jti: bl:${jti} with TTL: ${ttl}s`);
   }
 
   /**
-   * Checks if a JTI has been blacklisted.
-   * @param jti The unique token identifier
+   * Check if a token's `jti` has been blacklisted.
+   * Fail-closed strategy: Throws UnauthorizedException if Redis is down or errors.
    */
-  async isBlacklisted(jti: string): Promise<boolean> {
-    const client = this.redisService.getClient();
-    const result = await client.exists(`bl:${jti}`);
-    return result > 0;
-  }
-
-  /**
-   * Blacklists all tokens issued for a user before this point.
-   * Useful for "log out everywhere" and password change events.
-   * @param userId The ID of the user
-   * @param ttlSeconds The lifetime of access tokens (in seconds) to keep the blacklist active
-   */
-  async blacklistAllForUser(userId: string, ttlSeconds: number): Promise<void> {
-    const now = Math.floor(Date.now() / 1000);
-    const client = this.redisService.getClient();
-    // Use the bl: key prefix for blacklist keys
-    await client.set(`bl:u:${userId}`, now.toString(), 'EX', ttlSeconds);
-    this.logger.log(`Blacklisted all tokens for user ${userId} issued before timestamp ${now} for ${ttlSeconds}s`);
-  }
-
-  /**
-   * Checks if a user has invalidated all their tokens issued before the token's issued-at time.
-   * @param userId The ID of the user
-   * @param tokenIssuedAt The issued-at timestamp of the token (in seconds)
-   */
-  async isUserBlacklisted(userId: string, tokenIssuedAt: number): Promise<boolean> {
-    const client = this.redisService.getClient();
-    const blacklistedAtStr = await client.get(`bl:u:${userId}`);
-    if (!blacklistedAtStr) {
-      return false;
+  async isBlacklisted(jti?: string): Promise<boolean> {
+    if (!jti) return false;
+    try {
+      const exists = await this.redis.exists(`${this.PREFIX_JTI}${jti}`);
+      return exists === 1;
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to check blacklist status for jti ${jti}`,
+        error?.stack,
+      );
+      throw new UnauthorizedException('Security check failed (Redis error)');
     }
+  }
 
-    const blacklistedAt = parseInt(blacklistedAtStr, 10);
-    // If the token was issued before the "logout everywhere" command, it is blacklisted
-    return tokenIssuedAt < blacklistedAt;
+  /**
+   * Invalidate all existing tokens for a given user by recording a revocation timestamp.
+   * Default TTL is 15 minutes (900 seconds), matching standard access token lifetime.
+   */
+  async blacklistAllForUser(
+    userId: string,
+    ttlSeconds: number = 900,
+  ): Promise<void> {
+    if (!userId) return;
+    try {
+      const revokedAt = Date.now().toString();
+      await this.redis.set(
+        `${this.PREFIX_USER}${userId}`,
+        revokedAt,
+        'EX',
+        ttlSeconds,
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to blacklist all tokens for user ${userId}`,
+        error?.stack,
+      );
+      throw new UnauthorizedException('Security check failed (Redis error)');
+    }
+  }
+
+  /**
+   * Check if a user's tokens issued before a revocation timestamp are invalidated.
+   * Fail-closed strategy: Throws UnauthorizedException if Redis is down or errors.
+   */
+  async isUserBlacklisted(
+    userId: string,
+    tokenIssuedAt?: number,
+  ): Promise<boolean> {
+    if (!userId || !tokenIssuedAt) return false;
+    try {
+      const revokedAtStr = await this.redis.get(`${this.PREFIX_USER}${userId}`);
+      if (!revokedAtStr) return false;
+
+      const revokedAtMs = parseInt(revokedAtStr, 10);
+      const tokenIssuedAtMs = tokenIssuedAt * 1000;
+
+      return tokenIssuedAtMs <= revokedAtMs;
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to check user blacklist for user ${userId}`,
+        error?.stack,
+      );
+      throw new UnauthorizedException('Security check failed (Redis error)');
+    }
   }
 }

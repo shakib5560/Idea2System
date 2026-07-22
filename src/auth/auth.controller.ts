@@ -14,20 +14,30 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
-import { JwtService } from '@nestjs/jwt';
-import { TokenBlacklistService } from './token-blacklist.service';
 import { ConfigService } from '@nestjs/config';
-import { ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/create-auth.dto';
-import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { LoginDto } from './dto/login-auth.dto';
 import { OAuthStateService } from './oauth/oauth-state.service';
 import { OAuthProviderService } from './oauth/oauth-provider.service';
 import { OAuthService } from './oauth/oauth.service';
-import { Public } from './decorators/public.decorator';
-import { CurrentUser } from './decorators/current-user.decorator';
-import type { AuthenticatedUser } from './interfaces/authenticated-user.interface';
+import { JwtService } from '@nestjs/jwt';
+import { TokenBlacklistService } from './token-blacklist.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { AUserService } from '../a_user/a_user.service';
+import * as argon2 from 'argon2';
+
+type AuthenticatedRequest = Request & {
+  user: {
+    id: string;
+    email?: string | null;
+    name?: string | null;
+    username?: string | null;
+    jti?: string;
+    exp?: number;
+  };
+};
+
 
 @Controller('auth')
 export class AuthController {
@@ -39,42 +49,27 @@ export class AuthController {
     private readonly oauthProviderService: OAuthProviderService,
     private readonly oauthService: OAuthService,
     private readonly configService: ConfigService,
-    private readonly blacklistService: TokenBlacklistService,
     private readonly jwtService: JwtService,
+    private readonly tokenBlacklistService: TokenBlacklistService,
+    private readonly userService: AUserService,
   ) {
     this.isProd = this.configService.get<string>('NODE_ENV') === 'production';
   }
 
-  @Public()
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
-  @Public()
-  @Get('verify-email')
-  verifyEmail(@Query('token') token: string) {
-    if (!token)
-      throw new BadRequestException('Verification token is required.');
-    return this.authService.verifyEmail(token);
-  }
-
-  @Public()
-  @Post('resend-verification')
-  resendVerification(@Body() dto: ResendVerificationDto) {
-    return this.authService.resendEmailVerification(dto.email);
-  }
-
-  @Public()
   @UseGuards(AuthGuard('local'))
   @Post('login')
   login(
-    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: AuthenticatedRequest,
     @Body() _dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const tokenResult = this.authService.createToken(user);
-
+    const tokenResult = this.authService.createToken(req.user);
+    
     // Set HTTP-only session cookie
     res.cookie('__session', tokenResult.accessToken, {
       httpOnly: true,
@@ -89,27 +84,21 @@ export class AuthController {
 
   // ─── Google OAuth Flow with PKCE & OIDC ────────────────────────────────────
 
-  @Public()
   @Get('google')
   googleLogin(@Res() res: Response) {
     const state = this.oauthStateService.generateState();
     const codeVerifier = this.oauthStateService.generateCodeVerifier();
-    const codeChallenge =
-      this.oauthStateService.generateCodeChallenge(codeVerifier);
+    const codeChallenge = this.oauthStateService.generateCodeChallenge(codeVerifier);
     const nonce = this.oauthStateService.generateNonce();
 
     // Store OAuth state & verifier in signed HTTP-only cookie
-    res.cookie(
-      '__oauth_state_google',
-      JSON.stringify({ state, codeVerifier, nonce }),
-      {
-        httpOnly: true,
-        signed: true,
-        sameSite: 'lax',
-        maxAge: 10 * 60 * 1000, // 10 minutes
-        secure: this.isProd,
-      },
-    );
+    res.cookie('__oauth_state_google', JSON.stringify({ state, codeVerifier, nonce }), {
+      httpOnly: true,
+      signed: true,
+      sameSite: 'lax',
+      maxAge: 10 * 60 * 1000, // 10 minutes
+      secure: this.isProd,
+    });
 
     const redirectUrl = this.oauthProviderService.getGoogleAuthUrl(
       state,
@@ -120,7 +109,6 @@ export class AuthController {
     return res.redirect(redirectUrl);
   }
 
-  @Public()
   @Get('google/callback')
   async googleCallback(
     @Query('code') code: string,
@@ -131,41 +119,30 @@ export class AuthController {
   ) {
     if (error) {
       res.clearCookie('__oauth_state_google');
-      throw new BadRequestException(
-        `Google login cancelled or failed: ${error}`,
-      );
+      throw new BadRequestException(`Google login cancelled or failed: ${error}`);
     }
 
     if (!code || !state) {
       res.clearCookie('__oauth_state_google');
-      throw new BadRequestException(
-        'Invalid callback request: missing code or state',
-      );
+      throw new BadRequestException('Invalid callback request: missing code or state');
     }
 
-    const rawCookie =
-      req.signedCookies?.__oauth_state_google ||
-      req.cookies?.__oauth_state_google;
+    const rawCookie = req.signedCookies?.__oauth_state_google || req.cookies?.__oauth_state_google;
     res.clearCookie('__oauth_state_google');
 
     if (!rawCookie) {
-      throw new BadRequestException(
-        'Invalid OAuth state session or session expired',
-      );
+      throw new BadRequestException('Invalid OAuth state session or session expired');
     }
 
     let cookieData: { state: string; codeVerifier: string; nonce: string };
     try {
-      cookieData =
-        typeof rawCookie === 'string' ? JSON.parse(rawCookie) : rawCookie;
+      cookieData = typeof rawCookie === 'string' ? JSON.parse(rawCookie) : rawCookie;
     } catch {
       throw new BadRequestException('Invalid OAuth state cookie content');
     }
 
     if (cookieData.state !== state) {
-      throw new UnauthorizedException(
-        'OAuth CSRF state mismatch verification failed',
-      );
+      throw new UnauthorizedException('OAuth CSRF state mismatch verification failed');
     }
 
     // Exchange code for tokens & validate ID Token PKCE / Nonce / Iss / Aud
@@ -176,10 +153,7 @@ export class AuthController {
     );
 
     // Find/create user & link OAuth account
-    const { user } = await this.oauthService.handleOAuthCallback(
-      'google',
-      tokenResponse,
-    );
+    const { user } = await this.oauthService.handleOAuthCallback('google', tokenResponse);
 
     // Generate App JWT & set HTTP-only session cookie
     const tokenResult = this.authService.createToken(user);
@@ -196,34 +170,24 @@ export class AuthController {
 
   // ─── GitHub OAuth Flow ──────────────────────────────────────────────────────
 
-  @Public()
   @Get('github')
   githubLogin(@Res() res: Response) {
     const state = this.oauthStateService.generateState();
     const codeVerifier = this.oauthStateService.generateCodeVerifier();
-    const codeChallenge =
-      this.oauthStateService.generateCodeChallenge(codeVerifier);
+    const codeChallenge = this.oauthStateService.generateCodeChallenge(codeVerifier);
 
-    res.cookie(
-      '__oauth_state_github',
-      JSON.stringify({ state, codeVerifier }),
-      {
-        httpOnly: true,
-        signed: true,
-        sameSite: 'lax',
-        maxAge: 10 * 60 * 1000,
-        secure: this.isProd,
-      },
-    );
+    res.cookie('__oauth_state_github', JSON.stringify({ state, codeVerifier }), {
+      httpOnly: true,
+      signed: true,
+      sameSite: 'lax',
+      maxAge: 10 * 60 * 1000,
+      secure: this.isProd,
+    });
 
-    const redirectUrl = this.oauthProviderService.getGithubAuthUrl(
-      state,
-      codeChallenge,
-    );
+    const redirectUrl = this.oauthProviderService.getGithubAuthUrl(state, codeChallenge);
     return res.redirect(redirectUrl);
   }
 
-  @Public()
   @Get('github/callback')
   async githubCallback(
     @Query('code') code: string,
@@ -234,41 +198,30 @@ export class AuthController {
   ) {
     if (error) {
       res.clearCookie('__oauth_state_github');
-      throw new BadRequestException(
-        `GitHub login cancelled or failed: ${error}`,
-      );
+      throw new BadRequestException(`GitHub login cancelled or failed: ${error}`);
     }
 
     if (!code || !state) {
       res.clearCookie('__oauth_state_github');
-      throw new BadRequestException(
-        'Invalid callback request: missing code or state',
-      );
+      throw new BadRequestException('Invalid callback request: missing code or state');
     }
 
-    const rawCookie =
-      req.signedCookies?.__oauth_state_github ||
-      req.cookies?.__oauth_state_github;
+    const rawCookie = req.signedCookies?.__oauth_state_github || req.cookies?.__oauth_state_github;
     res.clearCookie('__oauth_state_github');
 
     if (!rawCookie) {
-      throw new BadRequestException(
-        'Invalid OAuth state session or session expired',
-      );
+      throw new BadRequestException('Invalid OAuth state session or session expired');
     }
 
     let cookieData: { state: string; codeVerifier?: string };
     try {
-      cookieData =
-        typeof rawCookie === 'string' ? JSON.parse(rawCookie) : rawCookie;
+      cookieData = typeof rawCookie === 'string' ? JSON.parse(rawCookie) : rawCookie;
     } catch {
       throw new BadRequestException('Invalid OAuth state cookie content');
     }
 
     if (cookieData.state !== state) {
-      throw new UnauthorizedException(
-        'OAuth CSRF state mismatch verification failed',
-      );
+      throw new UnauthorizedException('OAuth CSRF state mismatch verification failed');
     }
 
     const tokenResponse = await this.oauthProviderService.exchangeGithubCode(
@@ -276,10 +229,7 @@ export class AuthController {
       cookieData.codeVerifier,
     );
 
-    const { user } = await this.oauthService.handleOAuthCallback(
-      'github',
-      tokenResponse,
-    );
+    const { user } = await this.oauthService.handleOAuthCallback('github', tokenResponse);
 
     const tokenResult = this.authService.createToken(user);
     res.cookie('__session', tokenResult.accessToken, {
@@ -295,106 +245,114 @@ export class AuthController {
 
   // ─── Provider Token Refresh & Revoke ────────────────────────────────────────
 
-  @ApiBearerAuth('access-token')
+  @UseGuards(AuthGuard('jwt'))
   @Post('refresh-provider-token/:provider')
   async refreshProviderToken(
-    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: AuthenticatedRequest,
     @Param('provider') provider: 'google' | 'github',
   ) {
     if (provider !== 'google' && provider !== 'github') {
-      throw new BadRequestException(
-        'Invalid provider name. Must be google or github.',
-      );
+      throw new BadRequestException('Invalid provider name. Must be google or github.');
     }
 
-    const userAccounts = await this.oauthService['oauthRepo'].findByUserId(
-      user.id,
-    );
+    const userAccounts = await this.oauthService['oauthRepo'].findByUserId(req.user.id);
     const targetAccount = userAccounts.find((acc) => acc.provider === provider);
 
     if (!targetAccount) {
-      throw new BadRequestException(
-        `No connected ${provider} account found for this user`,
-      );
+      throw new BadRequestException(`No connected ${provider} account found for this user`);
     }
 
     await this.oauthService.ensureValidProviderToken(targetAccount.id);
-    return {
-      success: true,
-      message: `Provider token for ${provider} refreshed successfully`,
-    };
+    return { success: true, message: `Provider token for ${provider} refreshed successfully` };
   }
 
-  @ApiBearerAuth('access-token')
+  @UseGuards(AuthGuard('jwt'))
   @Delete('oauth/:provider')
   async revokeOAuthAccount(
-    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: AuthenticatedRequest,
     @Param('provider') provider: 'google' | 'github',
   ) {
     if (provider !== 'google' && provider !== 'github') {
-      throw new BadRequestException(
-        'Invalid provider name. Must be google or github.',
-      );
+      throw new BadRequestException('Invalid provider name. Must be google or github.');
     }
 
-    await this.oauthService.revokeOAuthAccount(user.id, provider);
-    return {
-      success: true,
-      message: `Disconnected ${provider} account successfully`,
-    };
+    await this.oauthService.revokeOAuthAccount(req.user.id, provider);
+    return { success: true, message: `Disconnected ${provider} account successfully` };
   }
 
   // ─── Logout & Profile ──────────────────────────────────────────────────────
 
-  private extractToken(req: Request): string | null {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
-      return authHeader.substring(7);
-    }
-    return req.signedCookies?.__session || req.cookies?.__session || null;
-  }
-
-  @Public()
   @Post('logout')
   async logout(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const token = this.extractToken(req);
-    if (token) {
+    const rawToken =
+      req.signedCookies?.__session ||
+      req.cookies?.__session ||
+      req.headers.authorization?.replace(/^Bearer\s+/i, '');
+
+    if (rawToken) {
       try {
-        const payload = this.jwtService.decode(token) as any;
-        if (payload && payload.jti && payload.exp) {
-          await this.blacklistService.blacklist(payload.jti, payload.exp);
+        const decoded = this.jwtService.decode(rawToken) as {
+          jti?: string;
+          exp?: number;
+        };
+        if (decoded?.jti && decoded?.exp) {
+          await this.tokenBlacklistService.blacklist(decoded.jti, decoded.exp);
         }
-      } catch (err) {
-        // Fallback: don't block user from logging out locally if token decoding fails
+      } catch {
+        // Ignore decoding errors on logout
       }
     }
+
     res.clearCookie('__session');
     return { success: true, message: 'Logged out successfully' };
   }
 
-  @ApiBearerAuth('access-token')
+  @UseGuards(AuthGuard('jwt'))
   @Post('logout-everywhere')
   async logoutEverywhere(
-    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: AuthenticatedRequest,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const tokenLifetimeSeconds = 15 * 60; // 15 minutes matching the access token expiration
-    await this.blacklistService.blacklistAllForUser(user.id, tokenLifetimeSeconds);
+    await this.tokenBlacklistService.blacklistAllForUser(req.user.id);
     res.clearCookie('__session');
-    return { success: true, message: 'Logged out from all devices successfully' };
+    return { success: true, message: 'Logged out from all sessions successfully' };
   }
 
-  @ApiBearerAuth('access-token')
-  @Get('me')
-  async me(@CurrentUser() user: AuthenticatedUser) {
-    const fullUser = await this.authService.findUserById(user.id);
-    if (!fullUser) {
-      throw new UnauthorizedException('User not found');
+  @UseGuards(AuthGuard('jwt'))
+  @Post('change-password')
+  async changePassword(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: ChangePasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const user = await this.userService.findById(req.user.id);
+    if (!user || !user.passwordHash) {
+      throw new BadRequestException('Password change not supported for this account');
     }
-    const { passwordHash, emailVerificationTokenHash, ...result } = fullUser;
-    return result;
+
+    const isValid = await argon2.verify(user.passwordHash, dto.currentPassword);
+    if (!isValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const newPasswordHash = await argon2.hash(dto.newPassword);
+    await this.userService.update(user.id, { passwordHash: newPasswordHash });
+
+    await this.tokenBlacklistService.blacklistAllForUser(user.id);
+    res.clearCookie('__session');
+
+    return {
+      success: true,
+      message: 'Password changed successfully. All active sessions logged out.',
+    };
+  }
+
+  @Get('me')
+  @UseGuards(AuthGuard('jwt'))
+  me(@Req() req: AuthenticatedRequest) {
+    return req.user;
   }
 }
