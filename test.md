@@ -140,11 +140,50 @@ By default, these routes require JWT authentication.
 
 ---
 
-## 4. Testing Cookie-Based Authentication
+---
 
-Because the API accepts both Bearer Header and the signed `__session` cookie:
+## 5. Testing Redis Functionality in Postman
 
-1. Log in via `POST {{baseUrl}}/auth/login`.
-2. Observe the **Cookies** tab in Postman. You will see the `__session` cookie stored for your domain.
-3. In a request (like `GET {{baseUrl}}/auth/me`), set the **Authorization** to `No Auth`.
-4. Send the request. Postman will automatically attach the stored cookie, and the API will authorize the request with `200 OK`.
+Redis powers health checks, profile caching, and JWT blacklist/revocation in the application. Follow these 4 Postman test cases to verify Redis is working:
+
+### Test Case 1: Health Check Endpoint
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/health`
+- **Expected Result (Redis UP):** `200 OK`
+  ```json
+  {
+    "status": "ok",
+    "redis": "up"
+  }
+  ```
+- **Expected Result (Redis DOWN):** `200 OK` (with status error)
+  ```json
+  {
+    "status": "error",
+    "redis": "down",
+    "error": "..."
+  }
+  ```
+
+### Test Case 2: Redis Profile Caching (`GET /auth/me`)
+1. Log in via `POST {{baseUrl}}/auth/login` to obtain a fresh `accessToken`.
+2. Send `GET {{baseUrl}}/auth/me` with Bearer `{{jwt_token}}`.
+   - **First Request:** Fetches user profile from PostgreSQL DB and caches it in Redis under key `cache:...`.
+   - **Subsequent Requests (within 5 mins):** Served directly from Redis cache with sub-millisecond response time.
+
+### Test Case 3: Redis Single Token Revocation Blacklist (`POST /auth/logout`)
+1. Log in via `POST {{baseUrl}}/auth/login`. Copy the returned `accessToken`.
+2. Send `GET {{baseUrl}}/auth/me` with the `accessToken` -> returns `200 OK`.
+3. Send `POST {{baseUrl}}/auth/logout` using the same `accessToken` in Bearer Auth.
+   - **Redis Action:** Pushes token's unique `jti` to Redis blacklist key `bl:<jti>` with TTL equal to the token's remaining lifetime.
+4. Immediately re-send `GET {{baseUrl}}/auth/me` using that same `accessToken`.
+   - **Expected Result:** `401 Unauthorized` (Redis blacklist check blocks the revoked token).
+
+### Test Case 4: Redis User-Wide Revocation (`POST /auth/logout-everywhere`)
+1. Log in via `POST {{baseUrl}}/auth/login` and save Token A.
+2. Log in again (or from another device) and save Token B.
+3. Send `POST {{baseUrl}}/auth/logout-everywhere` using Token A.
+   - **Redis Action:** Stores revocation timestamp under `bl:user:<userId>`.
+4. Try sending `GET {{baseUrl}}/auth/me` using Token B.
+   - **Expected Result:** `401 Unauthorized` (All tokens issued before the logout timestamp are invalidated).
+
