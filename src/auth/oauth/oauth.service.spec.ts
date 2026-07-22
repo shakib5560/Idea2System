@@ -58,8 +58,8 @@ describe('OAuthService', () => {
     const mockUserServiceImpl = {
       findById: jest.fn(),
       findByEmail: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
+      create: jest.fn().mockResolvedValue(mockUser),
+      update: jest.fn().mockResolvedValue(mockUser),
     };
 
     const mockOAuthRepoImpl = {
@@ -149,6 +149,7 @@ describe('OAuthService', () => {
         email: 'test@example.com',
         name: 'Test User',
         avatarUrl: 'https://example.com/avatar.png',
+        emailVerifiedAt: expect.any(Date),
       });
       expect(oauthRepo.create).toHaveBeenCalled();
       expect(result.user).toEqual(mockUser);

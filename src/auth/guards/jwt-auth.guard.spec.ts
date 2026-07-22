@@ -17,7 +17,7 @@ describe('JwtAuthGuard', () => {
     expect(guard).toBeDefined();
   });
 
-  it('should allow activation when route is marked public', () => {
+  it('should allow activation when route is marked public', async () => {
     const mockContext = {
       getHandler: () => {},
       getClass: () => {},
@@ -25,7 +25,7 @@ describe('JwtAuthGuard', () => {
 
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(true);
 
-    const result = guard.canActivate(mockContext);
+    const result = await guard.canActivate(mockContext);
     expect(result).toBe(true);
     expect(reflector.getAllAndOverride).toHaveBeenCalledWith(IS_PUBLIC_KEY, [
       mockContext.getHandler(),
@@ -33,10 +33,13 @@ describe('JwtAuthGuard', () => {
     ]);
   });
 
-  it('should call super.canActivate when route is not marked public', () => {
+  it('should call super.canActivate when route is not marked public', async () => {
     const mockContext = {
       getHandler: () => {},
       getClass: () => {},
+      switchToHttp: () => ({
+        getRequest: () => ({ user: { emailVerified: true } }),
+      }),
     } as unknown as ExecutionContext;
 
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
@@ -47,7 +50,7 @@ describe('JwtAuthGuard', () => {
       .spyOn(AuthGuard('jwt').prototype, 'canActivate')
       .mockReturnValue(true);
 
-    const result = guard.canActivate(mockContext);
+    const result = await guard.canActivate(mockContext);
     expect(result).toBe(true);
     expect(superCanActivateSpy).toHaveBeenCalledWith(mockContext);
 

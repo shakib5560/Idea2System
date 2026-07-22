@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AUserService } from './a_user.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 
 describe('AUserService', () => {
   let service: AUserService;
@@ -19,6 +20,14 @@ describe('AUserService', () => {
       providers: [
         AUserService,
         { provide: PrismaService, useValue: mockPrismaService },
+        {
+          provide: CACHE_MANAGER,
+          useValue: {
+            get: jest.fn(),
+            set: jest.fn(),
+            del: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

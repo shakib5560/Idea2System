@@ -146,6 +146,13 @@ GITHUB_CALLBACK_URL=http://localhost:5000/api/v1.0/auth/github/callback
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_CALLBACK_URL=http://localhost:5000/api/v1.0/auth/google/callback
+
+# Redis configuration (Upstash - TLS required, single database).
+# Note: Key prefixing is used instead of database index splitting.
+REDIS_HOST=your-upstash-redis-endpoint.upstash.io
+REDIS_PORT=6379
+REDIS_PASSWORD=your-upstash-redis-password
+REDIS_TLS=true
 ```
 
 </details>
@@ -184,10 +191,18 @@ Swagger (dev only) → `http://localhost:5000/api/v1.0/docs`
 | `POST` | `/api/v1.0/auth/login` | Sign in with email and password |
 | `GET` | `/api/v1.0/auth/google` | Start Google sign-in |
 | `GET` | `/api/v1.0/auth/github` | Start GitHub sign-in |
-| `GET` | `/api/v1.0/auth/me` | Get the authenticated user profile |
-| `POST` | `/api/v1.0/auth/logout` | End the application session |
+| `GET` | `/api/v1.0/auth/me` | Get the authenticated user profile (cached) |
+| `POST` | `/api/v1.0/auth/logout` | End the application session (blacklists current token) |
+| `POST` | `/api/v1.0/auth/logout-everywhere` | End the session on all devices (invalidates all user tokens) |
+| `GET` | `/api/v1.0/health` | Check API and Redis connectivity health status |
 
 <sub>Full OAuth configuration and endpoint list in the <a href="core-api/README.md">Core API README</a>.</sub>
+
+<br>
+
+> [!IMPORTANT]
+> **Security & Fail-Closed Behavior**:
+> Token blacklist verification operates in a **fail-closed** manner. If the Redis server is unreachable, authentication validation checks will fail (throwing `401 Unauthorized` or `500 Internal Server Error`) to prevent revoked tokens from bypassing validation.
 
 <br>
 

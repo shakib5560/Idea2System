@@ -17,6 +17,8 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { MailModule } from '../common/mail/mail.module';
 
+import { TokenBlacklistService } from './token-blacklist.service';
+
 @Module({
   imports: [
     AUserModule,
@@ -43,11 +45,12 @@ import { MailModule } from '../common/mail/mail.module';
     OAuthProviderService,
     OAuthAccountRepository,
     OAuthService,
+    TokenBlacklistService,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
   ],
-  exports: [AuthService, OAuthService],
+  exports: [AuthService, OAuthService, TokenBlacklistService],
 })
 export class AuthModule {}

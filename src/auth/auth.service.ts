@@ -10,7 +10,7 @@ import { AUserService } from '../a_user/a_user.service';
 import { RegisterDto } from './dto/create-auth.dto';
 import { User } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { MailService } from '../common/mail/mail.service';
 
 export interface AuthUser {
@@ -152,6 +152,7 @@ export class AuthService {
       name: 'name' in user ? user.name : undefined,
       username: user.username,
       emailVerified,
+      jti: randomUUID(),
     };
 
     return {
@@ -182,6 +183,10 @@ export class AuthService {
       .replace(/\/$/, '');
     const verificationUrl = `${apiUrl}/api/v1.0/auth/verify-email?token=${encodeURIComponent(otp)}`;
     await this.mail.sendEmailVerification(user.email, otp, verificationUrl);
+  }
+
+  findUserById(id: string) {
+    return this.users.findById(id);
   }
 
   private hashVerificationToken(token: string) {

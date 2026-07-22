@@ -22,11 +22,23 @@ This guide describes how to test the private-by-default NestJS authentication la
 
 These routes are decorated with `@Public()` and do not require any Authorization header.
 
-### A. Root / Health Check
+### A. Root
 
 - **Method:** `GET`
 - **URL:** `{{baseUrl}}/`
 - **Expected Response:** `200 OK` with string `Hello World!`
+
+### A2. Health Check
+
+- **Method:** `GET`
+- **URL:** `{{baseUrl}}/health`
+- **Expected Response:** `200 OK` reporting API and Redis health:
+  ```json
+  {
+    "status": "ok",
+    "redis": "up"
+  }
+  ```
 
 ### B. Register User
 
@@ -101,13 +113,30 @@ By default, these routes require JWT authentication.
 
 - **Method:** `POST`
 - **URL:** `{{baseUrl}}/auth/logout`
-- **Expected Response:** `201 Created` or `200 OK` clearing the `__session` cookie.
+- **Expected Response:** `200 OK` clearing the `__session` cookie and invalidating the token via Redis blacklist.
   ```json
   {
     "success": true,
     "message": "Logged out successfully"
   }
   ```
+- **Verification Step**: After invoking Logout, immediately try calling `GET {{baseUrl}}/auth/me` with the same token in the Bearer header.
+  - **Expected Response:** `401 Unauthorized` (Token has been blacklisted).
+
+### C. Logout Everywhere (Invalidate All Sessions)
+
+- **Method:** `POST`
+- **URL:** `{{baseUrl}}/auth/logout-everywhere`
+- **Authentication Inherited:** Yes (`Inherit auth from parent`).
+- **Expected Response:** `200 OK` clearing the `__session` cookie and invalidating all tokens issued for this user prior to this timestamp.
+  ```json
+  {
+    "success": true,
+    "message": "Logged out from all devices successfully"
+  }
+  ```
+- **Verification Step**: After invoking logout-everywhere, try using any token previously issued for this user on any protected endpoint.
+  - **Expected Response:** `401 Unauthorized` (User has been logged out from all devices).
 
 ---
 

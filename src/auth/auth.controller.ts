@@ -14,6 +14,8 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
+import { JwtService } from '@nestjs/jwt';
+import { TokenBlacklistService } from './token-blacklist.service';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -37,6 +39,8 @@ export class AuthController {
     private readonly oauthProviderService: OAuthProviderService,
     private readonly oauthService: OAuthService,
     private readonly configService: ConfigService,
+    private readonly blacklistService: TokenBlacklistService,
+    private readonly jwtService: JwtService,
   ) {
     this.isProd = this.configService.get<string>('NODE_ENV') === 'production';
   }
@@ -342,16 +346,55 @@ export class AuthController {
 
   // ─── Logout & Profile ──────────────────────────────────────────────────────
 
+  private extractToken(req: Request): string | null {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+      return authHeader.substring(7);
+    }
+    return req.signedCookies?.__session || req.cookies?.__session || null;
+  }
+
   @Public()
   @Post('logout')
-  logout(@Res({ passthrough: true }) res: Response) {
+  async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const token = this.extractToken(req);
+    if (token) {
+      try {
+        const payload = this.jwtService.decode(token) as any;
+        if (payload && payload.jti && payload.exp) {
+          await this.blacklistService.blacklist(payload.jti, payload.exp);
+        }
+      } catch (err) {
+        // Fallback: don't block user from logging out locally if token decoding fails
+      }
+    }
     res.clearCookie('__session');
     return { success: true, message: 'Logged out successfully' };
   }
 
   @ApiBearerAuth('access-token')
+  @Post('logout-everywhere')
+  async logoutEverywhere(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const tokenLifetimeSeconds = 15 * 60; // 15 minutes matching the access token expiration
+    await this.blacklistService.blacklistAllForUser(user.id, tokenLifetimeSeconds);
+    res.clearCookie('__session');
+    return { success: true, message: 'Logged out from all devices successfully' };
+  }
+
+  @ApiBearerAuth('access-token')
   @Get('me')
-  me(@CurrentUser() user: AuthenticatedUser) {
-    return user;
+  async me(@CurrentUser() user: AuthenticatedUser) {
+    const fullUser = await this.authService.findUserById(user.id);
+    if (!fullUser) {
+      throw new UnauthorizedException('User not found');
+    }
+    const { passwordHash, emailVerificationTokenHash, ...result } = fullUser;
+    return result;
   }
 }

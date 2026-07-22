@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
+import { TokenBlacklistService } from '../token-blacklist.service';
 
 interface JwtPayload {
   sub: string;
@@ -10,11 +11,16 @@ interface JwtPayload {
   name?: string | null;
   username?: string | null;
   emailVerified?: boolean;
+  jti?: string;
+  iat?: number;
 }
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    private readonly blacklistService: TokenBlacklistService,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -33,7 +39,24 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
    * Called after the JWT is successfully verified.
    * The return value is attached to req.user.
    */
-  validate(payload: JwtPayload) {
+  async validate(payload: JwtPayload) {
+    if (!payload.jti) {
+      throw new UnauthorizedException('Invalid token: missing identifier.');
+    }
+    if (!payload.iat) {
+      throw new UnauthorizedException('Invalid token: missing issued at timestamp.');
+    }
+
+    const isTokenBlacklisted = await this.blacklistService.isBlacklisted(payload.jti);
+    if (isTokenBlacklisted) {
+      throw new UnauthorizedException('Token has been blacklisted.');
+    }
+
+    const isUserBlacklisted = await this.blacklistService.isUserBlacklisted(payload.sub, payload.iat);
+    if (isUserBlacklisted) {
+      throw new UnauthorizedException('User has been logged out from all devices.');
+    }
+
     return {
       id: payload.sub,
       email: payload.email,
