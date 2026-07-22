@@ -27,7 +27,10 @@ export class OAuthAccountRepository {
     private readonly encryption: TokenEncryptionService,
   ) {}
 
-  async findByProvider(provider: string, providerAccountId: string): Promise<OAuthAccount | null> {
+  async findByProvider(
+    provider: string,
+    providerAccountId: string,
+  ): Promise<OAuthAccount | null> {
     const account = await this.prisma.oAuthAccount.findUnique({
       where: {
         provider_providerAccountId: {
@@ -79,7 +82,10 @@ export class OAuthAccountRepository {
     return this.decryptTokens(account);
   }
 
-  async updateTokens(id: string, data: UpdateOAuthTokensData): Promise<OAuthAccount> {
+  async updateTokens(
+    id: string,
+    data: UpdateOAuthTokensData,
+  ): Promise<OAuthAccount> {
     const updateData: any = {
       accessTokenExpiresAt: data.accessTokenExpiresAt,
     };

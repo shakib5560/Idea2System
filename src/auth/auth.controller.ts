@@ -21,6 +21,11 @@ import { LoginDto } from './dto/login-auth.dto';
 import { OAuthStateService } from './oauth/oauth-state.service';
 import { OAuthProviderService } from './oauth/oauth-provider.service';
 import { OAuthService } from './oauth/oauth.service';
+import { JwtService } from '@nestjs/jwt';
+import { TokenBlacklistService } from './token-blacklist.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { AUserService } from '../a_user/a_user.service';
+import * as argon2 from 'argon2';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -28,6 +33,8 @@ type AuthenticatedRequest = Request & {
     email?: string | null;
     name?: string | null;
     username?: string | null;
+    jti?: string;
+    exp?: number;
   };
 };
 
@@ -42,6 +49,9 @@ export class AuthController {
     private readonly oauthProviderService: OAuthProviderService,
     private readonly oauthService: OAuthService,
     private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
+    private readonly tokenBlacklistService: TokenBlacklistService,
+    private readonly userService: AUserService,
   ) {
     this.isProd = this.configService.get<string>('NODE_ENV') === 'production';
   }
@@ -273,9 +283,71 @@ export class AuthController {
   // ─── Logout & Profile ──────────────────────────────────────────────────────
 
   @Post('logout')
-  logout(@Res({ passthrough: true }) res: Response) {
+  async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const rawToken =
+      req.signedCookies?.__session ||
+      req.cookies?.__session ||
+      req.headers.authorization?.replace(/^Bearer\s+/i, '');
+
+    if (rawToken) {
+      try {
+        const decoded = this.jwtService.decode(rawToken) as {
+          jti?: string;
+          exp?: number;
+        };
+        if (decoded?.jti && decoded?.exp) {
+          await this.tokenBlacklistService.blacklist(decoded.jti, decoded.exp);
+        }
+      } catch {
+        // Ignore decoding errors on logout
+      }
+    }
+
     res.clearCookie('__session');
     return { success: true, message: 'Logged out successfully' };
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('logout-everywhere')
+  async logoutEverywhere(
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.tokenBlacklistService.blacklistAllForUser(req.user.id);
+    res.clearCookie('__session');
+    return { success: true, message: 'Logged out from all sessions successfully' };
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('change-password')
+  async changePassword(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: ChangePasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const user = await this.userService.findById(req.user.id);
+    if (!user || !user.passwordHash) {
+      throw new BadRequestException('Password change not supported for this account');
+    }
+
+    const isValid = await argon2.verify(user.passwordHash, dto.currentPassword);
+    if (!isValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const newPasswordHash = await argon2.hash(dto.newPassword);
+    await this.userService.update(user.id, { passwordHash: newPasswordHash });
+
+    await this.tokenBlacklistService.blacklistAllForUser(user.id);
+    res.clearCookie('__session');
+
+    return {
+      success: true,
+      message: 'Password changed successfully. All active sessions logged out.',
+    };
   }
 
   @Get('me')

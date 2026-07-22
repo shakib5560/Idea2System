@@ -8,6 +8,7 @@ import * as argon2 from 'argon2';
 import { AUserService } from '../a_user/a_user.service';
 import { RegisterDto } from './dto/create-auth.dto';
 import { User } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 export interface AuthUser {
   id: string;
@@ -78,6 +79,7 @@ export class AuthService {
   // ─── Create JWT Token ─────────────────────────────────────────────────────
   createToken(user: AuthUser | User) {
     const payload = {
+      jti: randomUUID(),
       sub: user.id,
       email: user.email,
       name: 'name' in user ? user.name : undefined,

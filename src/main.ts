@@ -36,18 +36,20 @@ async function bootstrap() {
 
   // ─── Cookie Parser ───────────────────────────────────────────────────────────
   // Parses Cookie header and populates req.cookies / req.signedCookies
-  const cookieSecret = config.get<string>('COOKIE_SECRET', 'super-secret-cookie-signing-key-123456789');
+  const cookieSecret = config.get<string>(
+    'COOKIE_SECRET',
+    'super-secret-cookie-signing-key-123456789',
+  );
   app.use(cookieParser(cookieSecret));
-
 
   // ─── Rate Limiting ───────────────────────────────────────────────────────────
   // Limits each IP to 100 requests per 15 minutes (protects against brute force)
   app.use(
     rateLimit({
       windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100,                  // max requests per window per IP
-      standardHeaders: true,     // Return rate-limit info in `RateLimit-*` headers
-      legacyHeaders: false,      // Disable `X-RateLimit-*` headers
+      max: 100, // max requests per window per IP
+      standardHeaders: true, // Return rate-limit info in `RateLimit-*` headers
+      legacyHeaders: false, // Disable `X-RateLimit-*` headers
       message: 'Too many requests from this IP, please try again later.',
     }),
   );
@@ -101,10 +103,10 @@ async function bootstrap() {
     SwaggerModule.setup('api/v1.0/docs', app, document, {
       // Swagger UI options
       swaggerOptions: {
-        persistAuthorization: true,   // keeps the token across page refreshes
-        docExpansion: 'none',         // collapse all sections by default
-        filter: true,                 // enable endpoint search bar
-        showRequestDuration: true,    // shows response time per request
+        persistAuthorization: true, // keeps the token across page refreshes
+        docExpansion: 'none', // collapse all sections by default
+        filter: true, // enable endpoint search bar
+        showRequestDuration: true, // shows response time per request
       },
       customSiteTitle: 'Idea2System API Docs',
     });
@@ -115,9 +117,10 @@ async function bootstrap() {
   console.log(`🚀 Server       → http://localhost:${port}/api/v1.0`);
   if (isDev) {
     console.log(`📖 Swagger UI   → http://localhost:${port}/api/v1.0/docs`);
-    console.log(`📄 OpenAPI JSON → http://localhost:${port}/api/v1.0/docs-json`);
+    console.log(
+      `📄 OpenAPI JSON → http://localhost:${port}/api/v1.0/docs-json`,
+    );
   }
 }
 
 bootstrap();
-

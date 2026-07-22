@@ -43,7 +43,13 @@ export class OAuthService {
     provider: 'google' | 'github',
     tokenResponse: OAuthTokenResponse,
   ): Promise<OAuthAuthResult> {
-    const { userProfile, accessToken, refreshToken, accessTokenExpiresAt, scope } = tokenResponse;
+    const {
+      userProfile,
+      accessToken,
+      refreshToken,
+      accessTokenExpiresAt,
+      scope,
+    } = tokenResponse;
 
     // Step 1: Look up existing OAuthAccount link by immutable (provider, providerAccountId)
     let oauthAccount = await this.oauthRepo.findByProvider(
@@ -68,7 +74,10 @@ export class OAuthService {
       }
 
       // Update user avatar/name if missing
-      if ((userProfile.avatarUrl && !user.avatarUrl) || (userProfile.name && !user.name)) {
+      if (
+        (userProfile.avatarUrl && !user.avatarUrl) ||
+        (userProfile.name && !user.name)
+      ) {
         user = await this.userService.update(user.id, {
           name: user.name || userProfile.name || undefined,
           avatarUrl: user.avatarUrl || userProfile.avatarUrl || undefined,
@@ -86,14 +95,22 @@ export class OAuthService {
           email: userProfile.email,
           name: userProfile.name,
           avatarUrl: userProfile.avatarUrl,
+          emailVerifiedAt: userProfile.emailVerified ? new Date() : null,
         });
       } else {
         // Existing user found via verified email -> safely link account & update details
+        const updateData: any = {};
         if (!user.name && userProfile.name) {
-          user = await this.userService.update(user.id, { name: userProfile.name });
+          updateData.name = userProfile.name;
         }
         if (!user.avatarUrl && userProfile.avatarUrl) {
-          user = await this.userService.update(user.id, { avatarUrl: userProfile.avatarUrl });
+          updateData.avatarUrl = userProfile.avatarUrl;
+        }
+        if (!user.emailVerifiedAt && userProfile.emailVerified) {
+          updateData.emailVerifiedAt = new Date();
+        }
+        if (Object.keys(updateData).length > 0) {
+          user = await this.userService.update(user.id, updateData);
         }
       }
 
@@ -125,7 +142,9 @@ export class OAuthService {
     }
 
     if (!oauthAccount.accessToken && !oauthAccount.refreshToken) {
-      throw new UnauthorizedException('OAuth token missing or revoked. Re-authentication required.');
+      throw new UnauthorizedException(
+        'OAuth token missing or revoked. Re-authentication required.',
+      );
     }
 
     const now = new Date();
@@ -142,24 +161,35 @@ export class OAuthService {
     if (!oauthAccount.refreshToken) {
       // Cannot refresh without a refresh token, clear tokens
       await this.oauthRepo.clearTokens(oauthAccount.id);
-      throw new UnauthorizedException('Access token expired and no refresh token available');
+      throw new UnauthorizedException(
+        'Access token expired and no refresh token available',
+      );
     }
 
     try {
       let refreshed;
       if (oauthAccount.provider === 'google') {
-        refreshed = await this.providerService.refreshGoogleToken(oauthAccount.refreshToken);
+        refreshed = await this.providerService.refreshGoogleToken(
+          oauthAccount.refreshToken,
+        );
       } else if (oauthAccount.provider === 'github') {
-        refreshed = await this.providerService.refreshGithubToken(oauthAccount.refreshToken);
+        refreshed = await this.providerService.refreshGithubToken(
+          oauthAccount.refreshToken,
+        );
       } else {
-        throw new BadRequestException(`Unsupported OAuth provider: ${oauthAccount.provider}`);
+        throw new BadRequestException(
+          `Unsupported OAuth provider: ${oauthAccount.provider}`,
+        );
       }
 
-      const updatedAccount = await this.oauthRepo.updateTokens(oauthAccount.id, {
-        accessToken: refreshed.accessToken,
-        refreshToken: refreshed.refreshToken || oauthAccount.refreshToken, // keep existing if not rotated
-        accessTokenExpiresAt: refreshed.accessTokenExpiresAt,
-      });
+      const updatedAccount = await this.oauthRepo.updateTokens(
+        oauthAccount.id,
+        {
+          accessToken: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken || oauthAccount.refreshToken, // keep existing if not rotated
+          accessTokenExpiresAt: refreshed.accessTokenExpiresAt,
+        },
+      );
 
       return { accessToken: updatedAccount.accessToken! };
     } catch (err) {
@@ -174,7 +204,10 @@ export class OAuthService {
   /**
    * Revoke/clear OAuth account tokens for a given user & provider.
    */
-  async revokeOAuthAccount(userId: string, provider: 'google' | 'github'): Promise<void> {
+  async revokeOAuthAccount(
+    userId: string,
+    provider: 'google' | 'github',
+  ): Promise<void> {
     const accounts = await this.oauthRepo.findByUserId(userId);
     const targetAccount = accounts.find((acc) => acc.provider === provider);
     if (targetAccount) {

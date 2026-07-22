@@ -13,6 +13,7 @@ import { OAuthProviderService } from './oauth/oauth-provider.service';
 import { OAuthAccountRepository } from './oauth/oauth-account.repository';
 import { OAuthService } from './oauth/oauth.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { TokenBlacklistService } from './token-blacklist.service';
 
 @Module({
   imports: [
@@ -39,7 +40,8 @@ import { PrismaModule } from '../prisma/prisma.module';
     OAuthProviderService,
     OAuthAccountRepository,
     OAuthService,
+    TokenBlacklistService,
   ],
-  exports: [AuthService, OAuthService],
+  exports: [AuthService, OAuthService, TokenBlacklistService],
 })
 export class AuthModule {}

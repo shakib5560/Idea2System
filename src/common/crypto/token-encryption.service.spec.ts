@@ -13,7 +13,11 @@ describe('TokenEncryptionService', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn().mockReturnValue('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
+            get: jest
+              .fn()
+              .mockReturnValue(
+                '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+              ),
           },
         },
       ],
@@ -25,7 +29,7 @@ describe('TokenEncryptionService', () => {
   it('should encrypt and decrypt string successfully', () => {
     const originalToken = 'secret-access-token-12345';
     const encrypted = service.encrypt(originalToken);
-    
+
     expect(encrypted).toBeDefined();
     expect(encrypted).not.toEqual(originalToken);
     expect(encrypted?.split(':').length).toBe(3);
@@ -42,7 +46,11 @@ describe('TokenEncryptionService', () => {
   });
 
   it('should throw InternalServerErrorException on invalid ciphertext', () => {
-    expect(() => service.decrypt('invalid-ciphertext')).toThrow(InternalServerErrorException);
-    expect(() => service.decrypt('iv:tag:badciphertext')).toThrow(InternalServerErrorException);
+    expect(() => service.decrypt('invalid-ciphertext')).toThrow(
+      InternalServerErrorException,
+    );
+    expect(() => service.decrypt('iv:tag:badciphertext')).toThrow(
+      InternalServerErrorException,
+    );
   });
 });
